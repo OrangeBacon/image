@@ -5,7 +5,7 @@
 #include "png.hpp"
 
 int main() {
-    std::vector<std::vector<Pixel>> image{};
+    std::vector<std::vector<Pixel>> data{};
 
     size_t width = 1920;
     size_t height = 1080;
@@ -14,11 +14,14 @@ int main() {
         for (size_t y = 0; y < height; y++) {
             row.push_back({ 360.0 / width * x, 0.5, 1.0 / height * y });
         }
-        image.push_back(row);
+        data.push_back(row);
     }
     
-    std::cout << "width: " << image.size() << "\n"
-        << "height: " << image[0].size() << "\n";
+    std::cout << "width: " << data.size() << "\n"
+        << "height: " << data[0].size() << "\n";
+
+    PNGImage image(data);
+    image.write(std::ofstream("image.png", std::ios::binary));
 
     return 0;
 }

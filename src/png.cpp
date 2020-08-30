@@ -1,5 +1,8 @@
 #include "png.hpp"
 
+#include <numeric>
+#include <cmath>
+
 uint16_t clamp(double val) {
     return static_cast<uint16_t>(std::round(val * UINT16_MAX));
 }
@@ -75,4 +78,32 @@ Pixel::Pixel(double H, double S, double V) : a(0) {
     r = clamp(R);
     g = clamp(G);
     b = clamp(B);
+}
+
+PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks() {
+
+}
+
+void PNGImage::write(std::ostream& file) {
+    file << 137 << 80 << 78 << 71 << 13 << 10 << 26 << 10;
+
+    for (auto& chunk : chunks) {
+        chunk->write(file);
+    }
+}
+
+constexpr uint32_t ChunkTypeName(const char* str) {
+    uint32_t result = 0;
+    result |= str[0];
+    result |= str[1] << 8;
+    result |= str[2] << 16;
+    result |= str[3] << 24;
+    return result;
+}
+
+Chunk::Chunk(uint32_t length, const char* type, uint32_t crc) :
+    length(length), type(ChunkTypeName(type)), crc(crc) {};
+
+void Chunk::write(std::ostream& file) {
+
 }
