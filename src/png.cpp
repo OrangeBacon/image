@@ -2,6 +2,8 @@
 
 #include <numeric>
 #include <cmath>
+#include <iostream>
+#include <type_traits>
 
 uint16_t clamp(double val) {
     return static_cast<uint16_t>(std::round(val * UINT16_MAX));
@@ -80,30 +82,92 @@ Pixel::Pixel(double H, double S, double V) : a(0) {
     b = clamp(B);
 }
 
-PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks() {
+PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(false) {
+    size_t width = data.size();
+    if (width < 1) {
+        hasError = true;
+        return;
+    }
 
+    size_t height = data[0].size();
+    if (height < 1) {
+        hasError = true;
+        return;
+    }
+
+    for (auto& row : data) {
+        if (row.size() != height) {
+            hasError = true;
+            return;
+        }
+    }
+
+    chunks.push_back(std::make_unique<Chunks::IHDR>(
+        static_cast<uint32_t>(width), 
+        static_cast<uint32_t>(height)));
+    chunks.push_back(std::make_unique<Chunks::IEND>());
 }
 
 void PNGImage::write(std::ostream& file) {
-    file << 137 << 80 << 78 << 71 << 13 << 10 << 26 << 10;
+    if (hasError) return;
+    std::cout << "chunk count: " << chunks.size() << "\n";
+    file << "\211PNG\r\n\032\n";
 
     for (auto& chunk : chunks) {
         chunk->write(file);
     }
 }
 
-constexpr uint32_t ChunkTypeName(const char* str) {
-    uint32_t result = 0;
-    result |= str[0];
-    result |= str[1] << 8;
-    result |= str[2] << 16;
-    result |= str[3] << 24;
-    return result;
+static void WriteBigEndian(std::ostream& file, uint32_t num) {
+    file << (uint8_t)((num >> 24) & 0xff)
+        << (uint8_t)((num >> 16) & 0xff)
+        << (uint8_t)((num >> 8) & 0xff)
+        << (uint8_t)(num & 0xff);
 }
 
-Chunk::Chunk(uint32_t length, const char* type, uint32_t crc) :
-    length(length), type(ChunkTypeName(type)), crc(crc) {};
+static uint32_t crc32(const std::vector<uint8_t>& data) {
+    uint32_t polynomial = 0xEDB88320L;
+    static uint32_t table[256];
+    static bool tableInitialised = false;
+
+    if (!tableInitialised) {
+        tableInitialised = true;
+        for (uint32_t i = 0; i <= 0xFF; i++) {
+            uint32_t crc = i;
+            for (uint32_t j = 0; j < 8; j++) {
+                crc = (crc >> 1) ^ (-int(crc & 1) & polynomial);
+            }
+            table[i] = crc;
+        }
+    }
+
+    uint32_t crc = 0;
+    uint8_t current = 0;
+    for(auto d : data) {
+        crc = (crc >> 8) ^ table[(crc ^ d) & 0xff];
+    }
+
+    return ~crc;
+}
+
+Chunk::Chunk(uint32_t length, std::string type, uint32_t crc) :
+    length(length), type(type), data(), crc(crc) {};
 
 void Chunk::write(std::ostream& file) {
+    compute();
 
+    WriteBigEndian(file, length);
+    file << type;
+    
+    for (auto d : data) {
+        file << d;
+    }
+
+    WriteBigEndian(file, crc32(data));
+}
+
+void Chunks::IHDR::compute() {
+    for (uint8_t c : "header data") {
+        data.push_back(c);
+    }
 }

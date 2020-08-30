@@ -19,6 +19,7 @@ struct Pixel {
 };
 
 // assumptions
+// - running on little endian machine
 // - truecolor pixels
 // - 16 bit samples
 // - 16 bit alpha chanel
@@ -31,15 +32,19 @@ struct Pixel {
 
 struct Chunk {
     uint32_t length; // max value = 2^31 - 1
-    uint32_t type;
+    std::string type;
+    std::vector<uint8_t> data;
     uint32_t crc;
 
-    Chunk(uint32_t length, const char* type, uint32_t crc = 0);
+    Chunk(uint32_t length, std::string type, uint32_t crc = 0);
 
-    virtual void write(std::ostream& file);
+    void write(std::ostream& file);
+    virtual void compute() {};
 };
 
 struct PNGImage {
+    bool hasError;
+
     std::vector<std::unique_ptr<Chunk>> chunks;
 
     PNGImage(std::vector<std::vector<Pixel>>& data);
@@ -61,6 +66,8 @@ namespace Chunks {
         IHDR(uint32_t width, uint32_t height) : Chunk(13, "IHDR"),
             width(width), height(height), bit_depth(16), color_type(6),
             compression_method(0), filter_method(0), interlace_method(0) {};
+
+        void compute() override;
     };
 
     struct IDAT : public Chunk {
