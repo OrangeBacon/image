@@ -130,6 +130,12 @@ PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(f
     chunks.push_back(std::make_unique<Chunks::IHDR>(
         static_cast<uint32_t>(width), 
         static_cast<uint32_t>(height)));
+
+    chunks.push_back(std::make_unique<Chunks::sRGB>(Chunks::sRGB::intent_t::saturation));
+    chunks.push_back(std::make_unique<Chunks::gAMA>(45455));
+    chunks.push_back(std::make_unique<Chunks::cHRM>(
+        31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000));
+
     chunks.push_back(std::make_unique<Chunks::IEND>());
 }
 
@@ -159,12 +165,12 @@ void Chunk::write(std::ostream& file) {
     file << type;
 
     CrcStream stream(file);
-    compute(stream);
+    write_data(stream);
 
     WriteBigEndian(file, stream.get_crc());
 }
 
-void Chunks::IHDR::compute(CrcStream& out) {
+void Chunks::IHDR::write_data(CrcStream& out) {
     WriteBigEndian(out, width);
     WriteBigEndian(out, height);
     out << bit_depth
@@ -172,4 +178,28 @@ void Chunks::IHDR::compute(CrcStream& out) {
         << compression_method
         << filter_method
         << interlace_method;
+}
+
+void Chunks::gAMA::write_data(CrcStream& out) {
+    WriteBigEndian(out, gamma);
+}
+
+void Chunks::cHRM::write_data(CrcStream& out) {
+    WriteBigEndian(out, white_point_x);
+    WriteBigEndian(out, white_point_y);
+    WriteBigEndian(out, red_x);
+    WriteBigEndian(out, red_y);
+    WriteBigEndian(out, green_x);
+    WriteBigEndian(out, green_y);
+    WriteBigEndian(out, blue_x);
+    WriteBigEndian(out, blue_y);
+}
+
+template <typename Base, typename Underlying = std::underlying_type_t<Base>>
+static Underlying to_underlying_type(Base b) {
+    return static_cast<Underlying>(b);
+}
+
+void Chunks::sRGB::write_data(CrcStream& out) {
+    out << to_underlying_type(rendering_intent);
 }

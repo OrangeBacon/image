@@ -52,7 +52,7 @@ struct Chunk {
     Chunk(uint32_t length, std::string type, uint32_t crc = 0);
 
     void write(std::ostream& file);
-    virtual void compute(CrcStream& out) {};
+    virtual void write_data(CrcStream& out) {};
 };
 
 struct PNGImage {
@@ -80,7 +80,7 @@ namespace Chunks {
             width(width), height(height), bit_depth(16), color_type(6),
             compression_method(0), filter_method(0), interlace_method(0) {};
 
-        void compute(CrcStream& out) override;
+        void write_data(CrcStream& out) override;
     };
 
     struct IDAT : public Chunk {
@@ -97,6 +97,8 @@ namespace Chunks {
 
         gAMA(uint32_t gamma) : Chunk(4, "gAMA"),
             gamma(gamma) {}
+
+        void write_data(CrcStream& out) override;
     };
 
     struct cHRM : public Chunk {
@@ -117,6 +119,8 @@ namespace Chunks {
             red_x(red_x), red_y(red_y),
             green_x(green_x), green_y(green_y),
             blue_x(blue_x), blue_y(blue_y) {}
+
+        void write_data(CrcStream& out) override;
     };
 
     struct sRGB : public Chunk {
@@ -124,12 +128,14 @@ namespace Chunks {
             perceptual = 0,
             relative_colormetric = 1,
             saturation = 2,
-            absolute_colormetric = 3,
+            absolute_colormetric = 3
         };
 
         intent_t rendering_intent;
 
         sRGB(intent_t rendering_intent) : Chunk(1, "sRGB"),
             rendering_intent(rendering_intent) {}
+
+        void write_data(CrcStream& out) override;
     };
 }
