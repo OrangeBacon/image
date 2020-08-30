@@ -4,4 +4,6 @@ project(image)
 
 add_executable(image
 	src/main.cpp
+	src/png.cpp
+	src/png.hpp
 )
