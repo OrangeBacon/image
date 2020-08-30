@@ -18,6 +18,20 @@ struct Pixel {
     Pixel(double H, double S, double V);
 };
 
+class CrcStream {
+    uint32_t crc;
+    std::ostream& stream;
+
+public:
+    CrcStream(std::ostream& s) : crc(0), stream(s) {}
+
+    CrcStream operator<<(uint8_t data);
+
+    uint32_t get_crc() {
+        return ~crc;
+    }
+};
+
 // assumptions
 // - running on little endian machine
 // - truecolor pixels
@@ -33,13 +47,12 @@ struct Pixel {
 struct Chunk {
     uint32_t length; // max value = 2^31 - 1
     std::string type;
-    std::vector<uint8_t> data;
     uint32_t crc;
 
     Chunk(uint32_t length, std::string type, uint32_t crc = 0);
 
     void write(std::ostream& file);
-    virtual void compute() {};
+    virtual void compute(CrcStream& out) {};
 };
 
 struct PNGImage {
@@ -67,7 +80,7 @@ namespace Chunks {
             width(width), height(height), bit_depth(16), color_type(6),
             compression_method(0), filter_method(0), interlace_method(0) {};
 
-        void compute() override;
+        void compute(CrcStream& out) override;
     };
 
     struct IDAT : public Chunk {

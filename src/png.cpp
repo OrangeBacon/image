@@ -9,6 +9,31 @@ uint16_t clamp(double val) {
     return static_cast<uint16_t>(std::round(val * UINT16_MAX));
 }
 
+static uint32_t crc32(uint32_t data, uint32_t prev = 0) {
+    uint32_t polynomial = 0xEDB88320L;
+    static uint32_t table[256];
+    static bool tableInitialised = false;
+
+    if (!tableInitialised) {
+        tableInitialised = true;
+        for (uint32_t i = 0; i <= 0xFF; i++) {
+            uint32_t crc = i;
+            for (uint32_t j = 0; j < 8; j++) {
+                crc = (crc >> 1) ^ (-int(crc & 1) & polynomial);
+            }
+            table[i] = crc;
+        }
+    }
+
+    return (prev >> 8) ^ table[(prev ^ data) & 0xff];
+}
+
+CrcStream CrcStream::operator<<(uint8_t data) {
+    stream << data;
+    crc = crc32(data, crc);
+    return *this;
+}
+
 // http://www.splinter.com.au/converting-hsv-to-rgb-colour-using-c/
 Pixel::Pixel(double H, double S, double V) : a(0) {
     while (H < 0) { H += 360; }
@@ -118,56 +143,33 @@ void PNGImage::write(std::ostream& file) {
     }
 }
 
-static void WriteBigEndian(std::ostream& file, uint32_t num) {
+template<typename t>
+static void WriteBigEndian(t& file, uint32_t num) {
     file << (uint8_t)((num >> 24) & 0xff)
         << (uint8_t)((num >> 16) & 0xff)
         << (uint8_t)((num >> 8) & 0xff)
         << (uint8_t)(num & 0xff);
 }
 
-static uint32_t crc32(const std::vector<uint8_t>& data) {
-    uint32_t polynomial = 0xEDB88320L;
-    static uint32_t table[256];
-    static bool tableInitialised = false;
-
-    if (!tableInitialised) {
-        tableInitialised = true;
-        for (uint32_t i = 0; i <= 0xFF; i++) {
-            uint32_t crc = i;
-            for (uint32_t j = 0; j < 8; j++) {
-                crc = (crc >> 1) ^ (-int(crc & 1) & polynomial);
-            }
-            table[i] = crc;
-        }
-    }
-
-    uint32_t crc = 0;
-    uint8_t current = 0;
-    for(auto d : data) {
-        crc = (crc >> 8) ^ table[(crc ^ d) & 0xff];
-    }
-
-    return ~crc;
-}
-
 Chunk::Chunk(uint32_t length, std::string type, uint32_t crc) :
-    length(length), type(type), data(), crc(crc) {};
+    length(length), type(type), crc(crc) {};
 
 void Chunk::write(std::ostream& file) {
-    compute();
-
     WriteBigEndian(file, length);
     file << type;
-    
-    for (auto d : data) {
-        file << d;
-    }
 
-    WriteBigEndian(file, crc32(data));
+    CrcStream stream(file);
+    compute(stream);
+
+    WriteBigEndian(file, stream.get_crc());
 }
 
-void Chunks::IHDR::compute() {
-    for (uint8_t c : "header data") {
-        data.push_back(c);
-    }
+void Chunks::IHDR::compute(CrcStream& out) {
+    WriteBigEndian(out, width);
+    WriteBigEndian(out, height);
+    out << bit_depth
+        << color_type
+        << compression_method
+        << filter_method
+        << interlace_method;
 }
