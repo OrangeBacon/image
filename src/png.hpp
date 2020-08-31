@@ -26,6 +26,7 @@ public:
     CrcStream(std::ostream& s) : crc(0), stream(s) {}
 
     CrcStream operator<<(uint8_t data);
+    CrcStream operator<<(std::string data);
 
     uint32_t get_crc() {
         return ~crc;
@@ -135,6 +136,28 @@ namespace Chunks {
 
         sRGB(intent_t rendering_intent) : Chunk(1, "sRGB"),
             rendering_intent(rendering_intent) {}
+
+        void write_data(CrcStream& out) override;
+    };
+
+    namespace keywords {
+        extern std::string title;
+        extern std::string author;
+        extern std::string description;
+        extern std::string copyrite;
+        extern std::string creation_time;
+        extern std::string software;
+        extern std::string disclaimer;
+        extern std::string warning;
+        extern std::string source;
+        extern std::string comment;
+    };
+
+    struct tEXt : public Chunk {
+        std::string keyword;
+        std::string text;
+
+        tEXt(std::string keyword, std::string text);
 
         void write_data(CrcStream& out) override;
     };

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <type_traits>
+#include <algorithm>
 
 uint16_t clamp(double val) {
     return static_cast<uint16_t>(std::round(val * UINT16_MAX));
@@ -31,6 +32,13 @@ static uint32_t crc32(uint32_t data, uint32_t prev = 0) {
 CrcStream CrcStream::operator<<(uint8_t data) {
     stream << data;
     crc = crc32(data, crc);
+    return *this;
+}
+
+CrcStream CrcStream::operator<<(std::string data) {
+    for (uint8_t c : data) {
+        this->operator<<(c);
+    }
     return *this;
 }
 
@@ -136,6 +144,8 @@ PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(f
     chunks.push_back(std::make_unique<Chunks::cHRM>(
         31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000));
 
+    chunks.push_back(std::make_unique<Chunks::tEXt>(Chunks::keywords::creation_time, "30/08/2020"));
+
     chunks.push_back(std::make_unique<Chunks::IEND>());
 }
 
@@ -202,4 +212,62 @@ static Underlying to_underlying_type(Base b) {
 
 void Chunks::sRGB::write_data(CrcStream& out) {
     out << to_underlying_type(rendering_intent);
+}
+
+namespace Chunks {
+    namespace keywords {
+        std::string title("Title");
+        std::string author("Author");
+        std::string description("Description");
+        std::string copyrite("Copyright");
+        std::string creation_time("Creation Time");
+        std::string software("Software");
+        std::string disclaimer("Disclaimer");
+        std::string warning("Warning");
+        std::string source("Source");
+        std::string comment("Comment");
+    };
+};
+
+bool isInvalidCharacter(char c) {
+    return (c < 0x20 && c != '\n') || (c >= 0x7f && c <= 0x9F);
+}
+
+void filter_str(std::string& str, bool (*pred)(char)) {
+    str.erase(std::remove_if(str.begin(), str.end(), pred), str.end());
+}
+
+Chunks::tEXt::tEXt(std::string keyword, std::string text) : Chunk(0, "tEXt") {
+    if (keyword.size() > 79) {
+        keyword = keyword.substr(0, 79);
+        std::cerr << "Truncating Keyword\n";
+    }
+
+    for (uint8_t c : keyword) {
+        if (c == 0) {
+            std::cerr << "Null char in keyword\n";
+            keyword = keywords::comment;
+            break;
+        }
+    }
+
+    for (size_t i = 0; i < text.size(); i++) {
+        if (text[i] == 0) {
+            std::cerr << "Null char in text\n";
+            text = text.substr(0, i - 1);
+            break;
+        }
+    }
+
+    filter_str(keyword, isInvalidCharacter);
+    filter_str(text, isInvalidCharacter);
+    
+
+    this->keyword = keyword;
+    this->text = text;
+    this->length = static_cast<uint32_t>(keyword.size() + 1 + text.size());
+}
+
+void Chunks::tEXt::write_data(CrcStream& out) {
+    out << keyword << '\0' << text;
 }
