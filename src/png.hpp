@@ -1,4 +1,5 @@
 #pragma once
+#define _CRT_SECURE_NO_WARNINGS
 #include <cstdint>
 #include <vector>
 #include <memory>
@@ -164,6 +165,19 @@ namespace Chunks {
 
         void write_data(CrcStream& out) override;
     };
+
+    struct tIME : public Chunk {
+        uint16_t year;
+        uint8_t month;
+        uint8_t day;
+        uint8_t hour;
+        uint8_t minute;
+        uint8_t second;
+
+        tIME();
+
+        void write_data(CrcStream& out) override;
+    };
 }
 
 struct PNGImage {
@@ -183,6 +197,9 @@ struct PNGImage {
     void disclaimer(std::string data, std::string language = "", std::string translated = "");
     void warning(std::string data, std::string language = "", std::string translated = "");
     void source(std::string data, std::string language = "", std::string translated = "");
+
+    void creation_time();
+    void modification_time();
 
     void write(std::ostream& file);
 };

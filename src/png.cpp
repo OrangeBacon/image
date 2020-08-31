@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <algorithm>
 #include <codecvt>
+#include <ctime>
 
 uint16_t clamp(double val) {
     return static_cast<uint16_t>(std::round(val * UINT16_MAX));
@@ -121,6 +122,11 @@ static void WriteBigEndian(t& file, uint32_t num) {
     file << (uint8_t)((num >> 24) & 0xff)
         << (uint8_t)((num >> 16) & 0xff)
         << (uint8_t)((num >> 8) & 0xff)
+        << (uint8_t)(num & 0xff);
+}
+template<typename t>
+static void WriteBigEndian(t& file, uint16_t num) {
+    file << (uint8_t)((num >> 8) & 0xff)
         << (uint8_t)(num & 0xff);
 }
 
@@ -247,6 +253,22 @@ void Chunks::iTXt::write_data(CrcStream& out) {
         << text;
 }
 
+Chunks::tIME::tIME() : Chunk (7, "tIME") {
+    std::time_t now = std::time(0);
+    std::tm* now_data = std::gmtime(&now);
+    year = 1900 + now_data->tm_year;
+    month = now_data->tm_mon + 1;
+    day = now_data->tm_mday;
+    hour = now_data->tm_hour;
+    minute = now_data->tm_min;
+    second = now_data->tm_sec;
+}
+
+void Chunks::tIME::write_data(CrcStream& out) {
+    WriteBigEndian(out, year);
+    out << month << day << hour << minute << second;
+}
+
 PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(false) {
     size_t width = data.size();
     if (width < 1) {
@@ -322,6 +344,17 @@ void PNGImage::warning(std::string data, std::string language, std::string trans
 
 void PNGImage::source(std::string data, std::string language, std::string translated) {
     meta(data, Chunks::keywords::source, language, translated);
+}
+
+void PNGImage::creation_time() {
+    std::time_t now = std::time(0);
+    std::string str(sizeof "2020-08-31T21:08:17Z", '\0');
+    std::strftime(&str[0], str.size(), "%FT%TZ", std::gmtime(&now));
+    creation_time(str);
+}
+
+void PNGImage::modification_time() {
+    chunks.push_back(std::make_unique<Chunks::tIME>());
 }
 
 void PNGImage::write(std::ostream& file) {
