@@ -56,16 +56,6 @@ struct Chunk {
     virtual void write_data(CrcStream& out) {};
 };
 
-struct PNGImage {
-    bool hasError;
-
-    std::vector<std::unique_ptr<Chunk>> chunks;
-
-    PNGImage(std::vector<std::vector<Pixel>>& data);
-
-    void write(std::ostream& file);
-};
-
 namespace Chunks {
 
     struct IHDR : public Chunk {
@@ -144,7 +134,7 @@ namespace Chunks {
         extern std::string title;
         extern std::string author;
         extern std::string description;
-        extern std::string copyrite;
+        extern std::string copyright;
         extern std::string creation_time;
         extern std::string software;
         extern std::string disclaimer;
@@ -175,3 +165,24 @@ namespace Chunks {
         void write_data(CrcStream& out) override;
     };
 }
+
+struct PNGImage {
+    bool hasError;
+
+    std::vector<std::unique_ptr<Chunk>> chunks;
+
+    PNGImage(std::vector<std::vector<Pixel>>& data);
+
+    void meta(std::string data, std::string keyword = Chunks::keywords::comment, std::string language = "", std::string translated = "");
+    void title(std::string data, std::string language = "", std::string translated = "");
+    void author(std::string data, std::string language = "", std::string translated = "");
+    void description(std::string data, std::string language = "", std::string translated = "");
+    void copyright(std::string data, std::string language = "", std::string translated = "");
+    void creation_time(std::string data, std::string language = "", std::string translated = "");
+    void software(std::string data, std::string language = "", std::string translated = "");
+    void disclaimer(std::string data, std::string language = "", std::string translated = "");
+    void warning(std::string data, std::string language = "", std::string translated = "");
+    void source(std::string data, std::string language = "", std::string translated = "");
+
+    void write(std::ostream& file);
+};

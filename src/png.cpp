@@ -116,52 +116,6 @@ Pixel::Pixel(double H, double S, double V) : a(0) {
     b = clamp(B);
 }
 
-PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(false) {
-    size_t width = data.size();
-    if (width < 1) {
-        hasError = true;
-        return;
-    }
-
-    size_t height = data[0].size();
-    if (height < 1) {
-        hasError = true;
-        return;
-    }
-
-    for (auto& row : data) {
-        if (row.size() != height) {
-            hasError = true;
-            return;
-        }
-    }
-
-    chunks.push_back(std::make_unique<Chunks::IHDR>(
-        static_cast<uint32_t>(width), 
-        static_cast<uint32_t>(height)));
-
-    chunks.push_back(std::make_unique<Chunks::sRGB>(Chunks::sRGB::intent_t::saturation));
-    chunks.push_back(std::make_unique<Chunks::gAMA>(45455));
-    chunks.push_back(std::make_unique<Chunks::cHRM>(
-        31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000));
-
-    chunks.push_back(std::make_unique<Chunks::tEXt>(Chunks::keywords::creation_time, "30/08/2020"));
-    chunks.push_back(std::make_unique<Chunks::iTXt>(Chunks::keywords::description, u8"my image\U0001F496", "en-gb", "Describer!!"));
-
-    chunks.push_back(std::make_unique<Chunks::IEND>());
-}
-
-void PNGImage::write(std::ostream& file) {
-    if (hasError) return;
-
-    std::cout << "chunk count: " << chunks.size() << "\n";
-    file << "\211PNG\r\n\032\n";
-
-    for (auto& chunk : chunks) {
-        chunk->write(file);
-    }
-}
-
 template<typename t>
 static void WriteBigEndian(t& file, uint32_t num) {
     file << (uint8_t)((num >> 24) & 0xff)
@@ -222,7 +176,7 @@ namespace Chunks {
         std::string title("Title");
         std::string author("Author");
         std::string description("Description");
-        std::string copyrite("Copyright");
+        std::string copyright("Copyright");
         std::string creation_time("Creation Time");
         std::string software("Software");
         std::string disclaimer("Disclaimer");
@@ -291,4 +245,94 @@ void Chunks::iTXt::write_data(CrcStream& out) {
         << language << '\0' 
         << translated_keyword << '\0' 
         << text;
+}
+
+PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(false) {
+    size_t width = data.size();
+    if (width < 1) {
+        hasError = true;
+        return;
+    }
+
+    size_t height = data[0].size();
+    if (height < 1) {
+        hasError = true;
+        return;
+    }
+
+    for (auto& row : data) {
+        if (row.size() != height) {
+            hasError = true;
+            return;
+        }
+    }
+
+    chunks.push_back(std::make_unique<Chunks::IHDR>(
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height)));
+
+    chunks.push_back(std::make_unique<Chunks::sRGB>(Chunks::sRGB::intent_t::saturation));
+    chunks.push_back(std::make_unique<Chunks::gAMA>(45455));
+    chunks.push_back(std::make_unique<Chunks::cHRM>(
+        31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000));
+}
+
+
+void PNGImage::meta(std::string data, std::string keyword, std::string language, std::string translated) {
+    if (std::any_of(data.begin(), data.end(), [](uint8_t c) {
+        return c > 0x7F;
+    })) {
+        chunks.push_back(std::make_unique<Chunks::iTXt>(keyword, data, language, translated));
+    } else {
+        chunks.push_back(std::make_unique<Chunks::tEXt>(keyword, data));
+    }
+}
+
+void PNGImage::title(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::title, language, translated);
+}
+
+void PNGImage::author(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::author, language, translated);
+}
+
+void PNGImage::description(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::description, language, translated);
+}
+
+void PNGImage::copyright(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::copyright, language, translated);
+}
+
+void PNGImage::creation_time(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::creation_time, language, translated);
+}
+
+void PNGImage::software(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::software, language, translated);
+}
+
+void PNGImage::disclaimer(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::disclaimer, language, translated);
+}
+
+void PNGImage::warning(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::warning, language, translated);
+}
+
+void PNGImage::source(std::string data, std::string language, std::string translated) {
+    meta(data, Chunks::keywords::source, language, translated);
+}
+
+void PNGImage::write(std::ostream& file) {
+    if (hasError) return;
+
+    chunks.push_back(std::make_unique<Chunks::IEND>());
+
+    std::cout << "chunk count: " << chunks.size() << "\n";
+    file << "\211PNG\r\n\032\n";
+
+    for (auto& chunk : chunks) {
+        chunk->write(file);
+    }
 }

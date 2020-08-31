@@ -21,6 +21,8 @@ int main() {
         << "height: " << data[0].size() << "\n";
 
     PNGImage image(data);
+    image.creation_time("30/08/2020");
+    image.description(u8"my image\U0001F496", "en-gb", "Describer!!");
     image.write(std::ofstream("image.png", std::ios::binary));
 
     return 0;
