@@ -1,10 +1,11 @@
-#include "png.hpp"
+﻿#include "png.hpp"
 
 #include <numeric>
 #include <cmath>
 #include <iostream>
 #include <type_traits>
 #include <algorithm>
+#include <codecvt>
 
 uint16_t clamp(double val) {
     return static_cast<uint16_t>(std::round(val * UINT16_MAX));
@@ -145,12 +146,14 @@ PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(f
         31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000));
 
     chunks.push_back(std::make_unique<Chunks::tEXt>(Chunks::keywords::creation_time, "30/08/2020"));
+    chunks.push_back(std::make_unique<Chunks::iTXt>(Chunks::keywords::description, u8"my image\U0001F496", "en-gb", "Describer!!"));
 
     chunks.push_back(std::make_unique<Chunks::IEND>());
 }
 
 void PNGImage::write(std::ostream& file) {
     if (hasError) return;
+
     std::cout << "chunk count: " << chunks.size() << "\n";
     file << "\211PNG\r\n\032\n";
 
@@ -229,11 +232,15 @@ namespace Chunks {
     };
 };
 
-bool isInvalidCharacter(char c) {
+bool isInvalidLatin1(uint8_t c) {
     return (c < 0x20 && c != '\n') || (c >= 0x7f && c <= 0x9F);
 }
 
-void filter_str(std::string& str, bool (*pred)(char)) {
+bool isInvalidUTF8(uint8_t c) {
+    return (c < 0x20 && c != '\n') || (c == 0xC0) || (c == 0xC1) || (c >= 0xF5);
+}
+
+void filter_str(std::string& str, bool (*pred)(uint8_t)) {
     str.erase(std::remove_if(str.begin(), str.end(), pred), str.end());
 }
 
@@ -243,24 +250,8 @@ Chunks::tEXt::tEXt(std::string keyword, std::string text) : Chunk(0, "tEXt") {
         std::cerr << "Truncating Keyword\n";
     }
 
-    for (uint8_t c : keyword) {
-        if (c == 0) {
-            std::cerr << "Null char in keyword\n";
-            keyword = keywords::comment;
-            break;
-        }
-    }
-
-    for (size_t i = 0; i < text.size(); i++) {
-        if (text[i] == 0) {
-            std::cerr << "Null char in text\n";
-            text = text.substr(0, i - 1);
-            break;
-        }
-    }
-
-    filter_str(keyword, isInvalidCharacter);
-    filter_str(text, isInvalidCharacter);
+    filter_str(keyword, isInvalidLatin1);
+    filter_str(text, isInvalidLatin1);
     
 
     this->keyword = keyword;
@@ -270,4 +261,34 @@ Chunks::tEXt::tEXt(std::string keyword, std::string text) : Chunk(0, "tEXt") {
 
 void Chunks::tEXt::write_data(CrcStream& out) {
     out << keyword << '\0' << text;
+}
+
+Chunks::iTXt::iTXt(std::string keyword, std::string text, 
+    std::string language, std::string translated) : Chunk(0, "iTXt"),
+    compression_flag(0), compression_method(0) {
+
+    if (keyword.size() > 79) {
+        keyword = keyword.substr(0, 79);
+        std::cerr << "Truncating Keyword\n";
+    }
+
+    filter_str(keyword, isInvalidUTF8);
+    filter_str(text, isInvalidUTF8);
+    filter_str(language, isInvalidUTF8);
+    filter_str(translated, isInvalidUTF8);
+
+    this->keyword = keyword;
+    this->text = text;
+    this->language = language;
+    this->translated_keyword = translated;
+    this->length = static_cast<uint32_t>(
+        keyword.size() + 3 + language.size() + 1 + translated.size() + 1 + text.size());
+}
+
+void Chunks::iTXt::write_data(CrcStream& out) {
+    out << keyword << '\0' 
+        << compression_flag << compression_method 
+        << language << '\0' 
+        << translated_keyword << '\0' 
+        << text;
 }

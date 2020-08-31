@@ -161,4 +161,17 @@ namespace Chunks {
 
         void write_data(CrcStream& out) override;
     };
+
+    struct iTXt : public Chunk {
+        std::string keyword;
+        uint8_t compression_flag;
+        uint8_t compression_method;
+        std::string language;
+        std::string translated_keyword;
+        std::string text;
+
+        iTXt(std::string keyword, std::string text, std::string language = "", std::string translated = "");
+
+        void write_data(CrcStream& out) override;
+    };
 }
