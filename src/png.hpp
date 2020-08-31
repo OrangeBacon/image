@@ -12,11 +12,13 @@ struct Pixel {
     uint16_t b;
     uint16_t a;
 
+    Pixel() : r(0), g(0), b(0), a(0) {};
+
     Pixel(uint16_t r, uint16_t g, uint16_t b, uint16_t a = 0) :
         r(r), g(g), b(b), a(a) {};
 
     // hsv conversion
-    Pixel(double H, double S, double V);
+    static Pixel HSV(double H, double S, double V);
 };
 
 class CrcStream {
@@ -178,6 +180,15 @@ namespace Chunks {
 
         void write_data(CrcStream& out) override;
     };
+
+    struct bKGD : public Chunk {
+        Pixel color;
+
+        bKGD(Pixel color) : Chunk(6, "bKGD"),
+            color(color) {}
+
+        void write_data(CrcStream& out) override;
+    };
 }
 
 struct PNGImage {
@@ -200,6 +211,8 @@ struct PNGImage {
 
     void creation_time();
     void modification_time();
+
+    void background(Pixel color);
 
     void write(std::ostream& file);
 };

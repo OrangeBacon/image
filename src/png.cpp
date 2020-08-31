@@ -45,7 +45,9 @@ CrcStream CrcStream::operator<<(std::string data) {
 }
 
 // http://www.splinter.com.au/converting-hsv-to-rgb-colour-using-c/
-Pixel::Pixel(double H, double S, double V) : a(0) {
+Pixel Pixel::HSV(double H, double S, double V) {
+    Pixel result;
+
     while (H < 0) { H += 360; }
     while (H >= 360) { H -= 360; }
 
@@ -112,9 +114,11 @@ Pixel::Pixel(double H, double S, double V) : a(0) {
         }
     }
 
-    r = clamp(R);
-    g = clamp(G);
-    b = clamp(B);
+    result.r = clamp(R);
+    result.g = clamp(G);
+    result.b = clamp(B);
+
+    return result;
 }
 
 template<typename t>
@@ -269,6 +273,12 @@ void Chunks::tIME::write_data(CrcStream& out) {
     out << month << day << hour << minute << second;
 }
 
+void Chunks::bKGD::write_data(CrcStream& out) {
+    WriteBigEndian(out, color.r);
+    WriteBigEndian(out, color.g);
+    WriteBigEndian(out, color.b);
+}
+
 PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(false) {
     size_t width = data.size();
     if (width < 1) {
@@ -355,6 +365,10 @@ void PNGImage::creation_time() {
 
 void PNGImage::modification_time() {
     chunks.push_back(std::make_unique<Chunks::tIME>());
+}
+
+void PNGImage::background(Pixel color) {
+    chunks.push_back(std::make_unique<Chunks::bKGD>(color));
 }
 
 void PNGImage::write(std::ostream& file) {

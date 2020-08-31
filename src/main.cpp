@@ -13,7 +13,7 @@ int main() {
     for (size_t x = 0; x < width; x++) {
         auto row = std::vector<Pixel>();
         for (size_t y = 0; y < height; y++) {
-            row.push_back({ 360.0 / width * x, 0.5, 1.0 / height * y });
+            row.push_back(Pixel::HSV(360.0 / width * x, 0.5, 1.0 / height * y));
         }
         data.push_back(row);
     }
@@ -22,6 +22,7 @@ int main() {
         << "height: " << data[0].size() << "\n";
 
     PNGImage image(data);
+    image.background({ 0, 0, 0 });
     image.description(u8"my image\U0001F496", "en-gb", "Describer!!");
     image.creation_time();
     image.modification_time();
