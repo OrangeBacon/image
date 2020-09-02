@@ -167,6 +167,10 @@ void Chunks::IHDR::write_data(CrcStream& out) {
         << interlace_method;
 }
 
+void Chunks::IDAT::write_data(CrcStream& out) {
+    // todo: implement png filtering/compression here
+}
+
 void Chunks::gAMA::write_data(CrcStream& out) {
     WriteBigEndian(out, gamma);
 }
@@ -295,31 +299,9 @@ void Chunks::tRNS::write_data(CrcStream& out) {
     WriteBigEndian(out, color.b);
 }
 
-PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : 
-    hasError(false), iDAT_count(0), use_transparency_channel(true),
-    use_alpha(true) {
-    size_t width = data.size();
-    if (width < 1) {
-        hasError = true;
-        return;
-    }
-
-    size_t height = data[0].size();
-    if (height < 1) {
-        hasError = true;
-        return;
-    }
-
-    for (auto& row : data) {
-        if (row.size() != height) {
-            hasError = true;
-            return;
-        }
-    }
-
-    chunks.push_back(std::make_unique<Chunks::IHDR>(
-        static_cast<uint32_t>(width),
-        static_cast<uint32_t>(height)));
+PNGImage::PNGImage() : has_error(false), use_transparency_channel(true),
+    use_alpha(true), IDAT_count(0), has_background(false) {
+    chunks.push_back(std::make_unique<Chunks::IHDR>(0,0));
 
     chunks.push_back(std::make_unique<Chunks::sRGB>(Chunks::sRGB::intent_t::saturation));
     chunks.push_back(std::make_unique<Chunks::gAMA>(45455));
@@ -327,6 +309,9 @@ PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) :
         31270, 32900, 64000, 33000, 30000, 60000, 15000, 6000));
 }
 
+PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : PNGImage() {
+    this->data(data);
+}
 
 void PNGImage::meta(std::string data, std::string keyword, std::string language, std::string translated) {
     if (std::any_of(data.begin(), data.end(), [](uint8_t c) {
@@ -386,25 +371,31 @@ void PNGImage::modification_time() {
 }
 
 void PNGImage::background(Pixel color) {
+    if (has_background || has_error) {
+        has_error = true;
+        return;
+    }
+
+    has_background = true;
     chunks.push_back(std::make_unique<Chunks::bKGD>(color));
 }
 
 void PNGImage::transparent_color(Pixel color) {
-    if (!use_transparency_channel || !use_alpha) {
-        hasError = true;
+    if (!use_transparency_channel || !use_alpha || has_error) {
+        has_error = true;
         return;
     }
 
-    chunks.push_back(std::make_unique<Chunks::tRNS>(color));
-    use_transparency_channel = false;
-
     auto header = dynamic_cast<Chunks::IHDR*>(chunks[0].get());
     header->color_type = 2;
+
+    chunks.push_back(std::make_unique<Chunks::tRNS>(color));
+    use_transparency_channel = false;
 }
 
 void PNGImage::no_alpha() {
     if (!use_transparency_channel || !use_alpha) {
-        hasError = true;
+        has_error = true;
         return;
     }
 
@@ -419,8 +410,35 @@ void PNGImage::bit_depth_8() {
     header->bit_depth = 8;
 }
 
+void PNGImage::data(std::vector<std::vector<Pixel>> data) {
+    size_t width = data.size();
+    if (width < 1) {
+        has_error = true;
+        return;
+    }
+
+    size_t height = data[0].size();
+    if (height < 1) {
+        has_error = true;
+        return;
+    }
+
+    for (auto& row : data) {
+        if (row.size() != height) {
+            has_error = true;
+            return;
+        }
+    }
+
+    auto header = dynamic_cast<Chunks::IHDR*>(chunks[0].get());
+    header->width = static_cast<uint16_t>(width);
+    header->height = static_cast<uint16_t>(height);
+
+    chunks.push_back(std::make_unique<Chunks::IDAT>(data, IDAT_count++));
+}
+
 void PNGImage::write(std::ostream& file) {
-    if (hasError) return;
+    if (has_error) return;
 
     chunks.push_back(std::make_unique<Chunks::IEND>());
 

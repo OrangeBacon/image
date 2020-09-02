@@ -79,7 +79,13 @@ namespace Chunks {
     };
 
     struct IDAT : public Chunk {
-        IDAT() : Chunk(0, "IDAT") {}
+        std::vector<std::vector<Pixel>> data;
+        int id;
+
+        IDAT(std::vector<std::vector<Pixel>> data, int id) : Chunk(0, "IDAT"), 
+            data(data), id(id) {}
+
+        void write_data(CrcStream& out) override;
     };
 
     struct IEND : public Chunk {
@@ -201,6 +207,7 @@ namespace Chunks {
 }
 
 struct PNGImage {
+    PNGImage();
     PNGImage(std::vector<std::vector<Pixel>>& data);
 
     void meta(std::string data, std::string keyword = Chunks::keywords::comment, std::string language = "", std::string translated = "");
@@ -223,13 +230,16 @@ struct PNGImage {
 
     void bit_depth_8();
 
+    void data(std::vector<std::vector<Pixel>> data);
+
     void write(std::ostream& file);
 
 private:
-    bool hasError;
+    bool has_error;
     bool use_transparency_channel;
     bool use_alpha;
-    int iDAT_count;
+    bool has_background;
+    int IDAT_count;
 
     std::vector<std::unique_ptr<Chunk>> chunks;
 };
