@@ -17,6 +17,8 @@ struct Pixel {
     Pixel(uint16_t r, uint16_t g, uint16_t b, uint16_t a = 0) :
         r(r), g(g), b(b), a(a) {};
 
+    static Pixel zero_one(double r, double g, double b);
+
     // hsv conversion
     static Pixel HSV(double H, double S, double V);
 };
@@ -40,7 +42,6 @@ public:
 // - running on little endian machine
 // - truecolor pixels
 // - 16 bit samples
-// - 16 bit alpha chanel
 // - not interlaced
 // - uses sRGB chunk (standard RGB)
 //   - implies gAMA + cHRM
@@ -78,7 +79,6 @@ namespace Chunks {
     };
 
     struct IDAT : public Chunk {
-        // to fill in later
         IDAT() : Chunk(0, "IDAT") {}
     };
 
@@ -189,13 +189,18 @@ namespace Chunks {
 
         void write_data(CrcStream& out) override;
     };
+
+    struct tRNS : public Chunk {
+        Pixel color;
+
+        tRNS(Pixel color) : Chunk(6, "tRNS"),
+            color(color) {}
+
+        void write_data(CrcStream& out) override;
+    };
 }
 
 struct PNGImage {
-    bool hasError;
-
-    std::vector<std::unique_ptr<Chunk>> chunks;
-
     PNGImage(std::vector<std::vector<Pixel>>& data);
 
     void meta(std::string data, std::string keyword = Chunks::keywords::comment, std::string language = "", std::string translated = "");
@@ -213,6 +218,18 @@ struct PNGImage {
     void modification_time();
 
     void background(Pixel color);
+    void transparent_color(Pixel color);
+    void no_alpha();
+
+    void bit_depth_8();
 
     void write(std::ostream& file);
+
+private:
+    bool hasError;
+    bool use_transparency_channel;
+    bool use_alpha;
+    int iDAT_count;
+
+    std::vector<std::unique_ptr<Chunk>> chunks;
 };

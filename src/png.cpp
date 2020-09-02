@@ -44,6 +44,16 @@ CrcStream CrcStream::operator<<(std::string data) {
     return *this;
 }
 
+Pixel Pixel::zero_one(double r, double g, double b) {
+    Pixel result;
+
+    result.r = clamp(r);
+    result.g = clamp(g);
+    result.b = clamp(b);
+
+    return result;
+}
+
 // http://www.splinter.com.au/converting-hsv-to-rgb-colour-using-c/
 Pixel Pixel::HSV(double H, double S, double V) {
     Pixel result;
@@ -279,7 +289,15 @@ void Chunks::bKGD::write_data(CrcStream& out) {
     WriteBigEndian(out, color.b);
 }
 
-PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : chunks(), hasError(false) {
+void Chunks::tRNS::write_data(CrcStream& out) {
+    WriteBigEndian(out, color.r);
+    WriteBigEndian(out, color.g);
+    WriteBigEndian(out, color.b);
+}
+
+PNGImage::PNGImage(std::vector<std::vector<Pixel>>& data) : 
+    hasError(false), iDAT_count(0), use_transparency_channel(true),
+    use_alpha(true) {
     size_t width = data.size();
     if (width < 1) {
         hasError = true;
@@ -369,6 +387,36 @@ void PNGImage::modification_time() {
 
 void PNGImage::background(Pixel color) {
     chunks.push_back(std::make_unique<Chunks::bKGD>(color));
+}
+
+void PNGImage::transparent_color(Pixel color) {
+    if (!use_transparency_channel || !use_alpha) {
+        hasError = true;
+        return;
+    }
+
+    chunks.push_back(std::make_unique<Chunks::tRNS>(color));
+    use_transparency_channel = false;
+
+    auto header = dynamic_cast<Chunks::IHDR*>(chunks[0].get());
+    header->color_type = 2;
+}
+
+void PNGImage::no_alpha() {
+    if (!use_transparency_channel || !use_alpha) {
+        hasError = true;
+        return;
+    }
+
+    use_alpha = false;
+
+    auto header = dynamic_cast<Chunks::IHDR*>(chunks[0].get());
+    header->color_type = 2;
+}
+
+void PNGImage::bit_depth_8() {
+    auto header = dynamic_cast<Chunks::IHDR*>(chunks[0].get());
+    header->bit_depth = 8;
 }
 
 void PNGImage::write(std::ostream& file) {

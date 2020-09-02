@@ -23,9 +23,10 @@ int main() {
 
     PNGImage image(data);
     image.background({ 0, 0, 0 });
-    image.description(u8"my image\U0001F496", "en-gb", "Describer!!");
+    image.description("my image\U0001F496", "en-gb", "Describer!!");
     image.creation_time();
     image.modification_time();
+    image.no_alpha();
     image.write(std::ofstream("image.png", std::ios::binary));
 
     return 0;
