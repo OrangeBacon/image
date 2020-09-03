@@ -131,6 +131,64 @@ Pixel Pixel::HSV(double H, double S, double V) {
     return result;
 }
 
+// see zlib source code
+// (C) 1995-2017 Jean-loup Gailly and Mark Adler
+
+std::vector<uint8_t> zlibCompress(const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> compressed;
+
+    uint16_t header = 0;
+    header |= (0 & 0xF) << 12; // info
+    header |= (8 & 0xF) << 8; // method
+    header |= (0 & 0x3) << 6; // level
+    header |= (0 & 0x1) << 5; // dict
+    header += 31 - (header % 31); // check
+
+    compressed.push_back(header >> 8);
+    compressed.push_back(header & 0xff);
+
+    // todo: implement deflate, compressed.push_back() here
+
+    // adler32 checksum
+    // largest prime smaller than 65536
+    constexpr const uint32_t BASE = 65521U;
+
+    // NMAX is the largest n such that 255n(n+1)/2 + (n+1)(BASE-1) <= 2^32-1
+    constexpr const uint32_t NMAX = 5552;
+
+    uint64_t adler = 1;
+    uint64_t sum2 = 0;
+    
+    size_t count = 0;
+    for (; count < data.size(); count += NMAX) {
+        for (size_t i = 0; i < NMAX; i++) {
+            adler += data[count + i]; sum2 += adler;
+        }
+
+        adler %= BASE;
+        sum2 %= BASE;
+    }
+
+    if (count > 0) {
+        for (size_t i = 0; i < count; i++) {
+            adler += data[count + i]; sum2 += adler;
+        }
+
+        adler %= BASE;
+        sum2 %= BASE;
+    }
+
+    uint32_t adler32 = adler | (sum2 << 16);
+
+    compressed.push_back((adler32 >> 24) & 0xff);
+    compressed.push_back((adler32 >> 16) & 0xff);
+    compressed.push_back((adler32 >> 8) & 0xff);
+    compressed.push_back(adler32 & 0xff);
+
+
+    return compressed;
+}
+
 template<typename t>
 static void WriteBigEndian(t& file, uint32_t num) {
     file << (uint8_t)((num >> 24) & 0xff)
@@ -147,17 +205,19 @@ static void WriteBigEndian(t& file, uint16_t num) {
 Chunk::Chunk(uint32_t length, std::string type, uint32_t crc) :
     length(length), type(type), crc(crc) {};
 
-void Chunk::write(std::ostream& file) {
+void Chunk::write(std::ostream& file, struct PNGImage& image) {
+    compute(image);
+
     WriteBigEndian(file, length);
     file << type;
 
     CrcStream stream(file);
-    write_data(stream);
+    write_data(stream, image);
 
     WriteBigEndian(file, stream.get_crc());
 }
 
-void Chunks::IHDR::write_data(CrcStream& out) {
+void Chunks::IHDR::write_data(CrcStream& out, struct PNGImage& image) {
     WriteBigEndian(out, width);
     WriteBigEndian(out, height);
     out << bit_depth
@@ -167,15 +227,57 @@ void Chunks::IHDR::write_data(CrcStream& out) {
         << interlace_method;
 }
 
-void Chunks::IDAT::write_data(CrcStream& out) {
-    // todo: implement png filtering/compression here
+void Chunks::IDAT::compute(struct PNGImage& image) {
+    size_t byte_count = image.use_alpha ? 4 : 3;
+    byte_count *= image.use_8_bit ? 1 : 2;
+    byte_count *= data[0].size();
+    byte_count += 1;
+    byte_count *= data.size();
+
+    std::vector<uint8_t> uncompressed;
+
+    for (auto& line : data) {
+        // None filtering (others todo)
+        uncompressed.push_back(0);
+
+        for (auto& pixel : line) {
+            if (image.use_8_bit) {
+                uncompressed.push_back(pixel.r / UINT16_MAX * UINT8_MAX);
+                uncompressed.push_back(pixel.g / UINT16_MAX * UINT8_MAX);
+                uncompressed.push_back(pixel.b / UINT16_MAX * UINT8_MAX);
+                if (image.use_alpha) {
+                    uncompressed.push_back(pixel.a / UINT16_MAX * UINT8_MAX);
+                }
+            } else {
+                uncompressed.push_back(pixel.r >> 8);
+                uncompressed.push_back(pixel.r & 0xff);
+                uncompressed.push_back(pixel.g >> 8);
+                uncompressed.push_back(pixel.g & 0xff);
+                uncompressed.push_back(pixel.b >> 8);
+                uncompressed.push_back(pixel.b & 0xff);
+                if (image.use_alpha) {
+                    uncompressed.push_back(pixel.a >> 8);
+                    uncompressed.push_back(pixel.a & 0xff);
+                }
+            }
+        }
+    }
+
+    bytes = zlibCompress(std::move(uncompressed));
+    length = bytes.size();
 }
 
-void Chunks::gAMA::write_data(CrcStream& out) {
+void Chunks::IDAT::write_data(CrcStream& out, PNGImage& image) {
+    for (auto c : bytes) {
+        out << c;
+    }
+}
+
+void Chunks::gAMA::write_data(CrcStream& out, struct PNGImage& image) {
     WriteBigEndian(out, gamma);
 }
 
-void Chunks::cHRM::write_data(CrcStream& out) {
+void Chunks::cHRM::write_data(CrcStream& out, struct PNGImage& image) {
     WriteBigEndian(out, white_point_x);
     WriteBigEndian(out, white_point_y);
     WriteBigEndian(out, red_x);
@@ -191,7 +293,7 @@ static Underlying to_underlying_type(Base b) {
     return static_cast<Underlying>(b);
 }
 
-void Chunks::sRGB::write_data(CrcStream& out) {
+void Chunks::sRGB::write_data(CrcStream& out, struct PNGImage& image) {
     out << to_underlying_type(rendering_intent);
 }
 
@@ -237,7 +339,7 @@ Chunks::tEXt::tEXt(std::string keyword, std::string text) : Chunk(0, "tEXt") {
     this->length = static_cast<uint32_t>(keyword.size() + 1 + text.size());
 }
 
-void Chunks::tEXt::write_data(CrcStream& out) {
+void Chunks::tEXt::write_data(CrcStream& out, struct PNGImage& image) {
     out << keyword << '\0' << text;
 }
 
@@ -263,7 +365,7 @@ Chunks::iTXt::iTXt(std::string keyword, std::string text,
         keyword.size() + 3 + language.size() + 1 + translated.size() + 1 + text.size());
 }
 
-void Chunks::iTXt::write_data(CrcStream& out) {
+void Chunks::iTXt::write_data(CrcStream& out, struct PNGImage& image) {
     out << keyword << '\0' 
         << compression_flag << compression_method 
         << language << '\0' 
@@ -282,25 +384,25 @@ Chunks::tIME::tIME() : Chunk (7, "tIME") {
     second = now_data->tm_sec;
 }
 
-void Chunks::tIME::write_data(CrcStream& out) {
+void Chunks::tIME::write_data(CrcStream& out, struct PNGImage& image) {
     WriteBigEndian(out, year);
     out << month << day << hour << minute << second;
 }
 
-void Chunks::bKGD::write_data(CrcStream& out) {
+void Chunks::bKGD::write_data(CrcStream& out, struct PNGImage& image) {
     WriteBigEndian(out, color.r);
     WriteBigEndian(out, color.g);
     WriteBigEndian(out, color.b);
 }
 
-void Chunks::tRNS::write_data(CrcStream& out) {
+void Chunks::tRNS::write_data(CrcStream& out, struct PNGImage& image) {
     WriteBigEndian(out, color.r);
     WriteBigEndian(out, color.g);
     WriteBigEndian(out, color.b);
 }
 
-PNGImage::PNGImage() : has_error(false), use_transparency_channel(true),
-    use_alpha(true), IDAT_count(0), has_background(false) {
+PNGImage::PNGImage() : has_error(false),use_alpha(true), IDAT_count(0), 
+    has_background(false), use_8_bit(false) {
     chunks.push_back(std::make_unique<Chunks::IHDR>(0,0));
 
     chunks.push_back(std::make_unique<Chunks::sRGB>(Chunks::sRGB::intent_t::saturation));
@@ -381,7 +483,7 @@ void PNGImage::background(Pixel color) {
 }
 
 void PNGImage::transparent_color(Pixel color) {
-    if (!use_transparency_channel || !use_alpha || has_error) {
+    if (!use_alpha || has_error) {
         has_error = true;
         return;
     }
@@ -390,11 +492,11 @@ void PNGImage::transparent_color(Pixel color) {
     header->color_type = 2;
 
     chunks.push_back(std::make_unique<Chunks::tRNS>(color));
-    use_transparency_channel = false;
+    use_alpha = false;
 }
 
 void PNGImage::no_alpha() {
-    if (!use_transparency_channel || !use_alpha) {
+    if (!use_alpha || has_error) {
         has_error = true;
         return;
     }
@@ -408,6 +510,7 @@ void PNGImage::no_alpha() {
 void PNGImage::bit_depth_8() {
     auto header = dynamic_cast<Chunks::IHDR*>(chunks[0].get());
     header->bit_depth = 8;
+    use_8_bit = true;
 }
 
 void PNGImage::data(std::vector<std::vector<Pixel>> data) {
@@ -446,6 +549,6 @@ void PNGImage::write(std::ostream& file) {
     file << "\211PNG\r\n\032\n";
 
     for (auto& chunk : chunks) {
-        chunk->write(file);
+        chunk->write(file, *this);
     }
 }

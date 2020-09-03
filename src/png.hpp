@@ -49,6 +49,7 @@ public:
 // - no sPLT chunk (suggested pallet)
 // - no PLTE chunk (pallet)
 
+struct PNGImage;
 struct Chunk {
     uint32_t length; // max value = 2^31 - 1
     std::string type;
@@ -56,8 +57,9 @@ struct Chunk {
 
     Chunk(uint32_t length, std::string type, uint32_t crc = 0);
 
-    void write(std::ostream& file);
-    virtual void write_data(CrcStream& out) {};
+    void write(std::ostream& file, struct PNGImage& image);
+    virtual void write_data(CrcStream& out, struct PNGImage& image) {};
+    virtual void compute(struct PNGImage& image) {};
 };
 
 namespace Chunks {
@@ -75,17 +77,19 @@ namespace Chunks {
             width(width), height(height), bit_depth(16), color_type(6),
             compression_method(0), filter_method(0), interlace_method(0) {};
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct IDAT : public Chunk {
         std::vector<std::vector<Pixel>> data;
+        std::vector<uint8_t> bytes;
         int id;
 
         IDAT(std::vector<std::vector<Pixel>> data, int id) : Chunk(0, "IDAT"), 
             data(data), id(id) {}
 
-        void write_data(CrcStream& out) override;
+        void compute(struct PNGImage& image) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct IEND : public Chunk {
@@ -98,7 +102,7 @@ namespace Chunks {
         gAMA(uint32_t gamma) : Chunk(4, "gAMA"),
             gamma(gamma) {}
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct cHRM : public Chunk {
@@ -120,7 +124,7 @@ namespace Chunks {
             green_x(green_x), green_y(green_y),
             blue_x(blue_x), blue_y(blue_y) {}
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct sRGB : public Chunk {
@@ -136,7 +140,7 @@ namespace Chunks {
         sRGB(intent_t rendering_intent) : Chunk(1, "sRGB"),
             rendering_intent(rendering_intent) {}
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     namespace keywords {
@@ -158,7 +162,7 @@ namespace Chunks {
 
         tEXt(std::string keyword, std::string text);
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct iTXt : public Chunk {
@@ -171,7 +175,7 @@ namespace Chunks {
 
         iTXt(std::string keyword, std::string text, std::string language = "", std::string translated = "");
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct tIME : public Chunk {
@@ -184,7 +188,7 @@ namespace Chunks {
 
         tIME();
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct bKGD : public Chunk {
@@ -193,7 +197,7 @@ namespace Chunks {
         bKGD(Pixel color) : Chunk(6, "bKGD"),
             color(color) {}
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 
     struct tRNS : public Chunk {
@@ -202,7 +206,7 @@ namespace Chunks {
         tRNS(Pixel color) : Chunk(6, "tRNS"),
             color(color) {}
 
-        void write_data(CrcStream& out) override;
+        void write_data(CrcStream& out, struct PNGImage& image) override;
     };
 }
 
@@ -234,10 +238,11 @@ struct PNGImage {
 
     void write(std::ostream& file);
 
+    bool use_alpha;
+    bool use_8_bit;
+
 private:
     bool has_error;
-    bool use_transparency_channel;
-    bool use_alpha;
     bool has_background;
     int IDAT_count;
 
